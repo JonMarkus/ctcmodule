@@ -145,6 +145,7 @@ private:
     long num_input_channels;  //!< number of neurons that can send signals to this node
     long output_channel;      //!< output for which our our input channel to provide 
     double w_stream;   //!< weighting parameter for ctc stream
+    std::string target;  //! ctc target without blank
     
     //! Initialize parameters to their default values.
     Parameters_();

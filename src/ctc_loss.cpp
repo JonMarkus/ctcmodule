@@ -77,6 +77,7 @@ ctc::ctc_loss::Parameters_::Parameters_()
   : num_input_channels(1)
   , output_channel(1)
   , w_stream(1)
+  , target()
 {
 }
 
@@ -94,6 +95,7 @@ ctc::ctc_loss::Parameters_::get( DictionaryDatum& d ) const
   def<long>(d, "num_input_channels", num_input_channels );
   def<long>(d, "output_channel", output_channel );
   def<double>(d,  "w_stream", w_stream );
+  def<std::string>(d, "target", target);
 }
 
 void
@@ -104,7 +106,8 @@ ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d )
   updateValue< long >( d, "num_input_channels", num_input_channels );
   updateValue< long >( d, "output_channel", output_channel );
   updateValue< double >( d, "w_stream", w_stream );
-
+  updateValue< std::string >(d, "target", target );
+  
   if ( num_input_channels < 1 )
   {
     throw BadProperty("num_input_channels > 0 required");
@@ -183,6 +186,8 @@ ctc::ctc_loss::pre_run_hook()
 void
 ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const long to_step )
 {
+  // time zero: slice_origin.get_steps() == 0 and from_step == 0
+  
   for ( long lag = from_step; lag < to_step; ++lag )
   {
     // order is important in this loop, since we have to use the old values
