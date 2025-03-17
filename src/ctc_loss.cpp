@@ -64,7 +64,7 @@ void
 RecordablesMap< ctc::ctc_loss >::create()
 {
   // use standard names whereever you can for consistency!
-  insert_( names::V_m, &ctc::ctc_loss::get_V_m_ );
+  // insert_( names::V_m, &ctc::ctc_loss::get_V_m_ );
 }
 }
 
@@ -74,21 +74,13 @@ RecordablesMap< ctc::ctc_loss >::create()
  * ---------------------------------------------------------------- */
 
 ctc::ctc_loss::Parameters_::Parameters_()
-  : C_m( 250.0 )     // pF
-  , I_e( 0.0 )       // nA
-  , tau_syn( 2.0 )   // ms
-  , V_th( -55.0 )    // mV
-  , V_reset( -70.0 ) // mV
-  , t_ref( 2.0 )     // ms
+  : num_input_channels(1)
+  , output_channel(1)
+  , w_stream(1)
 {
 }
 
 ctc::ctc_loss::State_::State_( const Parameters_& p )
-  : V_m( p.V_reset )
-  , dI_syn( 0.0 )
-  , I_syn( 0.0 )
-  , I_ext( 0.0 )
-  , refr_count( 0 )
 {
 }
 
@@ -99,57 +91,39 @@ ctc::ctc_loss::State_::State_( const Parameters_& p )
 void
 ctc::ctc_loss::Parameters_::get( DictionaryDatum& d ) const
 {
-  ( *d )[ names::C_m ] = C_m;
-  ( *d )[ names::I_e ] = I_e;
-  ( *d )[ names::tau_syn ] = tau_syn;
-  ( *d )[ names::V_th ] = V_th;
-  ( *d )[ names::V_reset ] = V_reset;
-  ( *d )[ names::t_ref ] = t_ref;
+  def<long>(d, "num_input_channels", num_input_channels );
+  def<long>(d, "output_channel", output_channel );
+  def<double>(d,  "w_stream", w_stream );
 }
 
 void
 ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d )
 {
-  updateValue< double >( d, names::C_m, C_m );
-  updateValue< double >( d, names::I_e, I_e );
-  updateValue< double >( d, names::tau_syn, tau_syn );
-  updateValue< double >( d, names::V_th, V_th );
-  updateValue< double >( d, names::V_reset, V_reset );
-  updateValue< double >( d, names::t_ref, t_ref );
-  if ( C_m <= 0 )
+  // add check that num input ch cannot be changed after making connections or simulating
+  
+  updateValue< long >( d, "num_input_channels", num_input_channels );
+  updateValue< long >( d, "output_channel", output_channel );
+  updateValue< double >( d, "w_stream", w_stream );
+
+  if ( num_input_channels < 1 )
   {
-    throw nest::BadProperty( "The membrane capacitance must be strictly positive." );
+    throw BadProperty("num_input_channels > 0 required");
   }
-  if ( tau_syn <= 0 )
+
+  if ( output_channel < 1 or output_channel > num_input_channels )
   {
-    throw nest::BadProperty( "The synaptic time constant must be strictly positive." );
-  }
-  if ( V_reset >= V_th )
-  {
-    throw nest::BadProperty( "The reset potential must be below threshold." );
-  }
-  if ( t_ref < 0 )
-  {
-    throw nest::BadProperty( "The refractory time must be at least one simulation step." );
+    throw BadProperty("Bad output channel");
   }
 }
 
 void
 ctc::ctc_loss::State_::get( DictionaryDatum& d ) const
 {
-  // Only the membrane potential is shown in the status; one could show also the
-  // other
-  // state variables
-  ( *d )[ names::V_m ] = V_m;
 }
 
 void
 ctc::ctc_loss::State_::set( const DictionaryDatum& d, const Parameters_& p )
 {
-  // Only the membrane potential can be set; one could also make other state
-  // variables
-  // settable.
-  updateValue< double >( d, names::V_m, V_m );
 }
 
 ctc::ctc_loss::Buffers_::Buffers_( ctc_loss& n )
@@ -191,35 +165,15 @@ ctc::ctc_loss::ctc_loss( const ctc_loss& n )
 void
 ctc::ctc_loss::init_buffers_()
 {
-  B_.spikes.clear();   // includes resize
-  B_.currents.clear(); // include resize
+  B_.predictions.clear();   // includes resize
   B_.logger_.reset();  // includes resize
 }
 
 void
 ctc::ctc_loss::pre_run_hook()
 {
+  B_.predictions.resize( P_.num_input_channels );
   B_.logger_.init();
-
-  const double h = Time::get_resolution().get_ms();
-  const double eh = std::exp( -h / P_.tau_syn );
-  const double tc = P_.tau_syn / P_.C_m;
-
-  // compute matrix elements, all other elements 0
-  V_.P11 = eh;
-  V_.P22 = eh;
-  V_.P21 = h * eh;
-  V_.P30 = h / P_.C_m;
-  V_.P31 = tc * ( P_.tau_syn - ( h + P_.tau_syn ) * eh );
-  V_.P32 = tc * ( 1 - eh );
-  // P33_ is 1
-
-  // initial value ensure normalization to max amplitude 1.0
-  V_.pscInitialValue = 1.0 * numerics::e / P_.tau_syn;
-
-  // refractory time in steps
-  V_.t_ref_steps = Time( Time::ms( P_.t_ref ) ).get_steps();
-  assert( V_.t_ref_steps >= 0 ); // since t_ref_ >= 0, this can only fail in error
 }
 
 /* ----------------------------------------------------------------
@@ -234,61 +188,24 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
     // order is important in this loop, since we have to use the old values
     // (those upon entry to the loop) on right hand sides everywhere
 
-    // update membrane potential
-    if ( S_.refr_count == 0 ) // neuron absolute not refractory
-    {
-      S_.V_m += V_.P30 * ( S_.I_ext + P_.I_e ) + V_.P31 * S_.dI_syn + V_.P32 * S_.I_syn;
-    }
-    else
-    {
-      // count down refractory time
-      --S_.refr_count;
-    }
-
-    // update synaptic currents
-    S_.I_syn = V_.P21 * S_.dI_syn + V_.P22 * S_.I_syn;
-    S_.dI_syn *= V_.P11;
-
-    // check for threshold crossing
-    if ( S_.V_m >= P_.V_th )
-    {
-      // reset neuron
-      S_.refr_count = V_.t_ref_steps;
-      S_.V_m = P_.V_reset;
-
-      // send spike, and set spike time in archive.
-      set_spiketime( Time::step( slice_origin.get_steps() + lag + 1 ) );
-      SpikeEvent se;
-      kernel().event_delivery_manager.send( *this, se, lag );
-    }
-
-    // add synaptic input currents for this step
-    S_.dI_syn += V_.pscInitialValue * B_.spikes.get_value( lag );
-
-    // set new input current
-    S_.I_ext = B_.currents.get_value( lag );
-
     // log membrane potential
     B_.logger_.record_data( slice_origin.get_steps() + lag );
   }
 }
 
 void
-ctc::ctc_loss::handle( SpikeEvent& e )
+ctc::ctc_loss::handle( LearningSignalConnectionEvent& e )
 {
-  assert( e.get_delay_steps() > 0 );
+   for ( auto it_event = e.begin(); it_event != e.end(); )
+  {
+    const long channel = e.get_rport();
+    const double prediction = e.get_coeffvalue( it_event ); // get_coeffvalue advances iterator
 
-  B_.spikes.add_value(
-    e.get_rel_delivery_steps( kernel().simulation_manager.get_slice_origin() ), e.get_weight() * e.get_multiplicity() );
-}
+    assert( 0 < channel and channel <= P_.num_input_channels );
+    B_.predictions.at( channel - 1 ).add_value(
+					       e.get_rel_delivery_steps( kernel().simulation_manager.get_slice_origin() ), prediction );
+  }
 
-void
-ctc::ctc_loss::handle( CurrentEvent& e )
-{
-  assert( e.get_delay_steps() > 0 );
-
-  B_.currents.add_value(
-    e.get_rel_delivery_steps( kernel().simulation_manager.get_slice_origin() ), e.get_weight() * e.get_current() );
 }
 
 // Do not move this function as inline to h-file. It depends on

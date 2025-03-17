@@ -39,55 +39,25 @@ namespace ctc
   void register_ctc_loss( const std::string& name );
 
 /** @BeginDocumentation
-Name: ctc_loss - Perfect integrate-and-fire neuron model with alpha PSC
-                      synapse.
+Name: ctc_loss - Custom-made CTC loss for a eprop model
 
 Description:
-ctc_loss implements a non-leaky integrate-and-fire neuron with
-alpha-function shaped synaptic currents. The threshold crossing is
-followed by an absolute refractory period during which the membrane
-potential is clamped to the resting potential, while synaptic currents
-evolve normally.
-
-The dynamics of the neuron are defined by
-
-   C_m dV/dt  = I_syn(t) + I_e
-
-   I_syn(t)   = Sum_{t_{j,k} < t} w_j x (t-t_{j,k}) x e/tau_syn x
-                                                        e^{-(t-t_{j,k})/tau_syn}
-
-where t_{j,k} is the time of the k-th spike arriving from neuron j, and w_j is
-the weight of the synapse from neuron j onto the present neuron. The alpha
-function is normalized by amplitude, i.e., the maximum input current for any
-spike is w_j.
+Coming
 
 Parameters:
-C_m      double - Membrane capacitance, in pF
-I_e      double - Intrinsic DC current, in nA
-tau_syn  double - Synaptic time constant, in ms
-t_ref    double - Duration of refractory period in ms.
-V_th     double - Spike threshold in mV.
-V_reset  double - Reset potential of the membrane in mV.
 
 Remarks:
-The linear subthresold dynamics is integrated by the Exact
-Integration scheme [1]. The neuron dynamics is solved on the time
-grid given by the computation step size. Incoming as well as emitted
-spikes are forced to that grid.
+This is highly experimental!
 
 References:
-[1] Rotter S & Diesmann M (1999) Exact simulation of time-invariant linear
-    systems with applications to neuronal modeling. Biologial Cybernetics
-    81:381-402.
 
-Sends: SpikeEvent
+Sends: LearningSignalConnectionEvent
 
-Receives: SpikeEvent, CurrentEvent, DataLoggingRequest
+Receives: LearningSignalConnectionEvent
 
 Author:
-Hans Ekkehard Plesser, based on iaf_psc_alpha
+Hans Ekkehard Plesser, Jon Markus Berg
 
-SeeAlso: iaf_psc_delta, iaf_psc_exp, iaf_psc_alpha
 */
 class ctc_loss : public nest::ArchivingNode
 {
@@ -115,11 +85,8 @@ public:
    */
   using nest::Node::handle;
   using nest::Node::handles_test_event;
-
-  /**
-   * Used to validate that we can send SpikeEvent to desired target:port.
-   */
-  size_t send_test_event( nest::Node&, size_t, nest::synindex, bool ) override;
+  using Node::sends_secondary_event;
+  
 
   /**
    * @defgroup mynest_handle Functions handling incoming events.
@@ -127,14 +94,17 @@ public:
    * defining @c handle() and @c connect_sender() for the given event.
    * @{
    */
-  void handle( nest::SpikeEvent& ) override;         //! accept spikes
-  void handle( nest::CurrentEvent& ) override;       //! accept input current
+  void handle( nest::LearningSignalConnectionEvent& ) override;
   void handle( nest::DataLoggingRequest& ) override; //! allow recording with multimeter
 
-  size_t handles_test_event( nest::SpikeEvent&, size_t ) override;
-  size_t handles_test_event( nest::CurrentEvent&, size_t ) override;
+  size_t handles_test_event( nest::LearningSignalConnectionEvent&, size_t ) override;
   size_t handles_test_event( nest::DataLoggingRequest&, size_t ) override;
   /** @} */
+
+  void
+    sends_secondary_event( nest::LearningSignalConnectionEvent& ) override
+  {
+  }
 
   void get_status( DictionaryDatum& ) const override;
   void set_status( const DictionaryDatum& ) override;
@@ -172,13 +142,10 @@ private:
    */
   struct Parameters_
   {
-    double C_m;     //!< Membrane capacitance, in pF.
-    double I_e;     //!< Intrinsic DC current, in nA.
-    double tau_syn; //!< Synaptic time constant, in ms.
-    double V_th;    //!< Spike threshold, in mV.
-    double V_reset; //!< Reset potential of the membrane, in mV.
-    double t_ref;   //!< Duration of refractory period, in ms.
-
+    long num_input_channels;  //!< number of neurons that can send signals to this node
+    long output_channel;      //!< output for which our our input channel to provide 
+    double w_stream;   //!< weighting parameter for ctc stream
+    
     //! Initialize parameters to their default values.
     Parameters_();
 
@@ -209,12 +176,6 @@ private:
    */
   struct State_
   {
-    double V_m;      //!< Membrane potential, in mV.
-    double dI_syn;   //!< Derivative of synaptic current, in nA/ms.
-    double I_syn;    //!< Synaptic current, in nA.
-    double I_ext;    //!< External current, in nA.
-    long refr_count; //!< Number of steps neuron is still refractory for
-
     /**
      * Construct new default State_ instance based on values in Parameters_.
      * This c'tor is called by the no-argument c'tor of the neuron model. It
@@ -251,9 +212,7 @@ private:
     Buffers_( ctc_loss& );
     Buffers_( const Buffers_&, ctc_loss& );
 
-    nest::RingBuffer spikes;   //!< Buffer incoming spikes through delay, as sum
-    nest::RingBuffer currents; //!< Buffer incoming currents through delay,
-                               //!< as sum
+    std::vector<nest::RingBuffer> predictions;   //!< Buffer incoming predictions, one per channel
 
     //! Logger for all analog data
     nest::UniversalDataLogger< ctc_loss > logger_;
@@ -270,28 +229,12 @@ private:
    */
   struct Variables_
   {
-    double P11;
-    double P21;
-    double P22;
-    double P31;
-    double P32;
-    double P30;
-    double P33;
-
-    double pscInitialValue;
-    long t_ref_steps; //!< Duration of refractory period, in steps.
   };
 
   /**
    * @defgroup Access functions for UniversalDataLogger.
    * @{
    */
-  //! Read out the real membrane potential
-  double
-  get_V_m_() const
-  {
-    return S_.V_m;
-  }
   /** @} */
 
   /**
@@ -316,42 +259,17 @@ private:
 };
 
 inline size_t
-ctc::ctc_loss::send_test_event( nest::Node& target, size_t receptor_type, nest::synindex, bool )
-{
-  // You should usually not change the code in this function.
-  // It confirms that the target of connection @c c accepts @c SpikeEvent on
-  // the given @c receptor_type.
-  nest::SpikeEvent e;
-  e.set_sender( *this );
-  return target.handles_test_event( e, receptor_type );
-}
-
-inline size_t
-ctc::ctc_loss::handles_test_event( nest::SpikeEvent&, size_t receptor_type )
+ctc::ctc_loss::handles_test_event( nest::LearningSignalConnectionEvent&, size_t receptor_type )
 {
   // You should usually not change the code in this function.
   // It confirms to the connection management system that we are able
   // to handle @c SpikeEvent on port 0. You need to extend the function
   // if you want to differentiate between input ports.
-  if ( receptor_type != 0 )
+  if ( receptor_type < 1 or receptor_type > P_.num_input_channels )
   {
     throw nest::UnknownReceptorType( receptor_type, get_name() );
   }
-  return 0;
-}
-
-inline size_t
-ctc::ctc_loss::handles_test_event( nest::CurrentEvent&, size_t receptor_type )
-{
-  // You should usually not change the code in this function.
-  // It confirms to the connection management system that we are able
-  // to handle @c CurrentEvent on port 0. You need to extend the function
-  // if you want to differentiate between input ports.
-  if ( receptor_type != 0 )
-  {
-    throw nest::UnknownReceptorType( receptor_type, get_name() );
-  }
-  return 0;
+  return receptor_type;
 }
 
 inline size_t
