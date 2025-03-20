@@ -22,6 +22,7 @@
 
 // include headers with your own stuff
 #include "ctc_loss.h"
+#include "ctc_readout_neuron.h"
 
 // Includes from NEST
 #include "nest_extension_interface.h"
@@ -46,5 +47,6 @@ void ctc::CtcModule::initialize()
   /* Register a neuron or device model.
    */
   ctc::register_ctc_loss( "ctc_loss" );
+  ctc::register_ctc_readout_neuron( "ctc_readout_neuron" );
 }
 

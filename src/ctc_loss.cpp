@@ -74,9 +74,7 @@ RecordablesMap< ctc::ctc_loss >::create()
  * ---------------------------------------------------------------- */
 
 ctc::ctc_loss::Parameters_::Parameters_()
-  : num_input_channels(1)
-  , output_channel(1)
-  , w_stream(1)
+  : w_stream(1)
   , target()
 {
 }
@@ -92,8 +90,6 @@ ctc::ctc_loss::State_::State_( const Parameters_& p )
 void
 ctc::ctc_loss::Parameters_::get( DictionaryDatum& d ) const
 {
-  def<long>(d, "num_input_channels", num_input_channels );
-  def<long>(d, "output_channel", output_channel );
   def<double>(d,  "w_stream", w_stream );
   def<std::string>(d, "target", target);
 }
@@ -102,21 +98,8 @@ void
 ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d )
 {
   // add check that num input ch cannot be changed after making connections or simulating
-  
-  updateValue< long >( d, "num_input_channels", num_input_channels );
-  updateValue< long >( d, "output_channel", output_channel );
   updateValue< double >( d, "w_stream", w_stream );
   updateValue< std::string >(d, "target", target );
-  
-  if ( num_input_channels < 1 )
-  {
-    throw BadProperty("num_input_channels > 0 required");
-  }
-
-  if ( output_channel < 1 or output_channel > num_input_channels )
-  {
-    throw BadProperty("Bad output channel");
-  }
 }
 
 void
@@ -130,12 +113,14 @@ ctc::ctc_loss::State_::set( const DictionaryDatum& d, const Parameters_& p )
 }
 
 ctc::ctc_loss::Buffers_::Buffers_( ctc_loss& n )
-  : logger_( n )
+  : num_inputs_( 0 )
+  , logger_( n )
 {
 }
 
-ctc::ctc_loss::Buffers_::Buffers_( const Buffers_&, ctc_loss& n )
-  : logger_( n )
+ctc::ctc_loss::Buffers_::Buffers_( const Buffers_& b, ctc_loss& n )
+  : num_inputs_(b.num_inputs_)
+  , logger_( n )
 {
 }
 
@@ -168,14 +153,19 @@ ctc::ctc_loss::ctc_loss( const ctc_loss& n )
 void
 ctc::ctc_loss::init_buffers_()
 {
-  B_.predictions.clear();   // includes resize
+  B_.p_symbol_.clear();   // includes resize
   B_.logger_.reset();  // includes resize
 }
 
 void
 ctc::ctc_loss::pre_run_hook()
 {
-  B_.predictions.resize( P_.num_input_channels );
+  B_.p_symbol_.resize( B_.num_inputs_ );
+  for ( auto& ps : B_.p_symbol_ )
+  {
+    ps.clear(); // includes resize
+  }
+  
   B_.logger_.init();
 }
 
@@ -187,29 +177,46 @@ void
 ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const long to_step )
 {
   // time zero: slice_origin.get_steps() == 0 and from_step == 0
-  
+
+  // outer dimension: inputs/targets, inner dimension: time, but flattened as needed by set_coeffarray
+  const size_t min_delay = kernel().connection_manager.get_min_delay();
+  std::vector< double > loss_buffer( B_.num_inputs_ * min_delay, 0 );
+
   for ( long lag = from_step; lag < to_step; ++lag )
   {
-    // order is important in this loop, since we have to use the old values
-    // (those upon entry to the loop) on right hand sides everywhere
-
+    // need to use B_.p_symbol_ here
+    
+    // filling loss buffer here with dummy values for testing
+    for ( size_t i = 0 ; i < B_.num_inputs_ ; ++i )
+    {
+      loss_buffer.at( i * min_delay + lag ) = i * 1000 + lag;
+    }
+    
     // log membrane potential
     B_.logger_.record_data( slice_origin.get_steps() + lag );
   }
+  
+  // send loss back to readout neuron, blocked by neuron
+  GapJunctionEvent gap_junction_event;
+  gap_junction_event.set_coeffarray( loss_buffer );
+  kernel().event_delivery_manager.send_secondary( *this, gap_junction_event );
 }
 
 void
-ctc::ctc_loss::handle( LearningSignalConnectionEvent& e )
+ctc::ctc_loss::handle( GapJunctionEvent& e )
 {
-   for ( auto it_event = e.begin(); it_event != e.end(); )
+  auto it_event = e.begin();
+  
+   for ( size_t i = 0 ; it_event != e.end() ; ++i )
   {
     const long channel = e.get_rport();
     const double prediction = e.get_coeffvalue( it_event ); // get_coeffvalue advances iterator
 
-    assert( 0 < channel and channel <= P_.num_input_channels );
-    B_.predictions.at( channel - 1 ).add_value(
-					       e.get_rel_delivery_steps( kernel().simulation_manager.get_slice_origin() ), prediction );
+    assert( 0 < channel and channel <= B_.num_inputs_ );
+    B_.p_symbol_.at( channel - 1 ).add_value( i, prediction );
   }
+  
+  
 
 }
 

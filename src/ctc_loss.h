@@ -36,6 +36,8 @@
 
 namespace ctc
 {
+using namespace nest;
+
   void register_ctc_loss( const std::string& name );
 
 /** @BeginDocumentation
@@ -94,15 +96,15 @@ public:
    * defining @c handle() and @c connect_sender() for the given event.
    * @{
    */
-  void handle( nest::LearningSignalConnectionEvent& ) override;
+  void handle( nest::GapJunctionEvent& ) override;
   void handle( nest::DataLoggingRequest& ) override; //! allow recording with multimeter
 
-  size_t handles_test_event( nest::LearningSignalConnectionEvent&, size_t ) override;
+  size_t handles_test_event( nest::GapJunctionEvent&, size_t ) override;
   size_t handles_test_event( nest::DataLoggingRequest&, size_t ) override;
   /** @} */
 
   void
-    sends_secondary_event( nest::LearningSignalConnectionEvent& ) override
+    sends_secondary_event( nest::GapJunctionEvent& ) override
   {
   }
 
@@ -142,8 +144,6 @@ private:
    */
   struct Parameters_
   {
-    long num_input_channels;  //!< number of neurons that can send signals to this node
-    long output_channel;      //!< output for which our our input channel to provide 
     double w_stream;   //!< weighting parameter for ctc stream
     std::string target;  //! ctc target without blank
     
@@ -213,7 +213,8 @@ private:
     Buffers_( ctc_loss& );
     Buffers_( const Buffers_&, ctc_loss& );
 
-    std::vector<nest::RingBuffer> predictions;   //!< Buffer incoming predictions, one per channel
+    size_t num_inputs_;  //! Number of neurons providing input
+    std::vector<nest::RingBuffer> p_symbol_;   //!< Buffers for incoming predictions, one per channel
 
     //! Logger for all analog data
     nest::UniversalDataLogger< ctc_loss > logger_;
@@ -260,16 +261,24 @@ private:
 };
 
 inline size_t
-ctc::ctc_loss::handles_test_event( nest::LearningSignalConnectionEvent&, size_t receptor_type )
+ctc::ctc_loss::handles_test_event( nest::GapJunctionEvent&, size_t receptor_type )
 {
-  // You should usually not change the code in this function.
-  // It confirms to the connection management system that we are able
-  // to handle @c SpikeEvent on port 0. You need to extend the function
-  // if you want to differentiate between input ports.
-  if ( receptor_type < 1 or receptor_type > P_.num_input_channels )
+  if ( not B_.p_symbol_.empty() )
+  {
+    throw nest::IllegalConnection( "Cannot connect to CTC after simulation started" );
+  }
+  
+  if ( receptor_type < 1 )
   {
     throw nest::UnknownReceptorType( receptor_type, get_name() );
   }
+  
+  if ( receptor_type != B_.num_inputs_ + 1 )
+  {
+    throw nest::IllegalConnection("must connect to CTC with strictly subsequent rports");
+  }
+  ++B_.num_inputs_;
+  
   return receptor_type;
 }
 

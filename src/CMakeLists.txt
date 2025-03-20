@@ -21,6 +21,7 @@
 set( MODULE_SOURCES
      ctcmodule.cpp
      ctc_loss.h ctc_loss.cpp
+     ctc_readout_neuron.h ctc_readout_neuron.cpp
    )
 
 add_library( ${MODULE_NAME}_module MODULE ${MODULE_SOURCES} )
