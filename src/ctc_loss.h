@@ -50,6 +50,8 @@ Parameters:
 
 Remarks:
 This is highly experimental!
+ 
+ See ctc_readout_neuron for communication scheme with that neuron.
 
 References:
 
@@ -96,10 +98,10 @@ public:
    * defining @c handle() and @c connect_sender() for the given event.
    * @{
    */
-  void handle( nest::GapJunctionEvent& ) override;
+  void handle( nest::InstantaneousRateConnectionEvent& ) override;
   void handle( nest::DataLoggingRequest& ) override; //! allow recording with multimeter
 
-  size_t handles_test_event( nest::GapJunctionEvent&, size_t ) override;
+  size_t handles_test_event( nest::InstantaneousRateConnectionEvent&, size_t ) override;
   size_t handles_test_event( nest::DataLoggingRequest&, size_t ) override;
   /** @} */
 
@@ -261,7 +263,7 @@ private:
 };
 
 inline size_t
-ctc::ctc_loss::handles_test_event( nest::GapJunctionEvent&, size_t receptor_type )
+ctc::ctc_loss::handles_test_event( nest::InstantaneousRateConnectionEvent&, size_t receptor_type )
 {
   if ( not B_.p_symbol_.empty() )
   {

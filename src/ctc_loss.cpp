@@ -203,21 +203,18 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
 }
 
 void
-ctc::ctc_loss::handle( GapJunctionEvent& e )
+ctc::ctc_loss::handle( InstantaneousRateConnectionEvent& e )
 {
   auto it_event = e.begin();
-  
+  const long channel = e.get_rport();
+
    for ( size_t i = 0 ; it_event != e.end() ; ++i )
   {
-    const long channel = e.get_rport();
     const double prediction = e.get_coeffvalue( it_event ); // get_coeffvalue advances iterator
 
     assert( 0 < channel and channel <= B_.num_inputs_ );
     B_.p_symbol_.at( channel - 1 ).add_value( i, prediction );
   }
-  
-  
-
 }
 
 // Do not move this function as inline to h-file. It depends on

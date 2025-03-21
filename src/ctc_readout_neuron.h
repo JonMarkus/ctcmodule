@@ -56,8 +56,9 @@ Description
  
  Rport assignment:
  - DelayedRateEvent as in original readout
+ - InstantaneousRateConnectionEvent for readout -> ctc_loss connection, rport 1..n represents sender
  - GapJunction from 1..n, one rport for each incoming connection to CTC
-   Connect with make_symmetric and pass array of rport values (NEST cannot count up)
+   Connect with pass array of rport values, must match upgoing IRE rports (NEST cannot count up)
  
  CTC event format:
  - Readout -> CTC: one value per time step
@@ -284,18 +285,21 @@ public:
 
   using Node::sends_secondary_event;
 
+  // learning signal down to RNN
   void
   sends_secondary_event( LearningSignalConnectionEvent& ) override
   {
   }
 
+  // normalization among readout
   void
   sends_secondary_event( DelayedRateConnectionEvent& ) override
   {
   }
 
+  // from readout to ctc_loss
   void
-  sends_secondary_event( GapJunctionEvent& ) override
+  sends_secondary_event( InstantaneousRateConnectionEvent& ) override
   {
   }
 

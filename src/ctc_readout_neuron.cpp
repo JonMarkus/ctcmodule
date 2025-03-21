@@ -313,9 +313,9 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
   }
   
   // send p_symbol to CTC
-  GapJunctionEvent gap_junction_event;
-  gap_junction_event.set_coeffarray( p_symbol_buffer );
-  kernel().event_delivery_manager.send_secondary( *this, gap_junction_event );
+  InstantaneousRateConnectionEvent p_symbol_event;
+  p_symbol_event.set_coeffarray( p_symbol_buffer );
+  kernel().event_delivery_manager.send_secondary( *this, p_symbol_event );
 
   return;
 }
