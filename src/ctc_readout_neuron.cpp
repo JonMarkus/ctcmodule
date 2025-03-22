@@ -201,8 +201,9 @@ ctc::ctc_readout_neuron::init_buffers_()
   B_.normalization_rate_ = 0;
   B_.spikes_.clear();   // includes resize
   B_.currents_.clear(); // includes resize
-  B_.ctc_loss_.clear(); // includes resize
   B_.logger_.reset();   // includes resize
+  
+  B_.ctc_loss_.resize( kernel().connection_manager.get_min_delay(), 0.0 );
 }
 
 void
@@ -280,6 +281,17 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
 
     B_.normalization_rate_ = 0.0;
 
+    // print out dummy values for testing. This is stuff received from ctc_readout
+    std::cerr << std::fixed << std::setprecision(0);
+    std::cerr << "readout update loop: t = " << origin.get_steps() << ", gid = " << get_node_id()
+      << ", loss received = ";
+    for ( const auto&l : B_.ctc_loss_ )
+    {
+      std::cerr << l << " ";
+    }
+    std::cerr << std::endl;
+    // end dummy printing
+    
     if ( V_.signal_to_other_readouts_ )
     {
       readout_signal_unnorm_buffer[ lag ] = S_.readout_signal_unnorm_;
@@ -288,7 +300,7 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
     error_signal_buffer[ lag ] = S_.error_signal_;
     
     // write dummy value for testing, build in lag so we can see lags arrive correctly
-    p_symbol_buffer[ lag ] = lag * 1000 - S_.v_m_;
+    p_symbol_buffer[ lag ] = get_node_id() * 1e6 + origin.get_steps() * 1e3 + lag;
 
     append_new_eprop_history_entry( t );
     write_error_signal_to_history( t, S_.error_signal_ );
@@ -316,6 +328,16 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
   InstantaneousRateConnectionEvent p_symbol_event;
   p_symbol_event.set_coeffarray( p_symbol_buffer );
   kernel().event_delivery_manager.send_secondary( *this, p_symbol_event );
+
+  // print out dummy values for testing. This is stuff received from ctc_readout
+  std::cerr << "readout update end: t =  " << origin.get_steps() << ", gid = " << get_node_id()
+    << ", p_symbol sending = ";
+  for ( const auto&p : p_symbol_buffer )
+  {
+    std::cerr << p << " ";
+  }
+  std::cerr << std::endl;
+  // end dummy printing
 
   return;
 }
@@ -368,7 +390,7 @@ ctc::ctc_readout_neuron::handle( DelayedRateConnectionEvent& e )
 }
 
 void
-ctc::ctc_readout_neuron::handle( GapJunctionEvent& e )
+ctc::ctc_readout_neuron::handle( FlexibleDataEvent& e )
 {
   // Extract the block that is relevant for this neuron.
   const size_t rport = e.get_rport();
@@ -378,13 +400,16 @@ ctc::ctc_readout_neuron::handle( GapJunctionEvent& e )
   assert( rport > 0 );
   assert( rport * min_delay <= e.size() );
 
-  auto it = e.begin() + (rport-1) * min_delay;
+  // Advance to section of buffer with data for this readout neuron
+  // Take into account that iterator for e is based on underlying uint type
+  auto it = e.begin()
+    + number_of_uints_covered< decltype(B_.ctc_loss_)::value_type >() * (rport-1) * min_delay;
   assert( it != e.end() );
 
   for ( size_t i = 0 ; i < min_delay and it != e.end() ; ++i )
   {
     // get_coeffvalue() advances it
-    B_.ctc_loss_.set_value( i,  e.get_coeffvalue( it ) );
+    B_.ctc_loss_.at( i ) = e.get_coeffvalue( it );
   }
 }
 

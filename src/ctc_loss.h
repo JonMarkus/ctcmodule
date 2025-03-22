@@ -106,7 +106,7 @@ public:
   /** @} */
 
   void
-    sends_secondary_event( nest::GapJunctionEvent& ) override
+    sends_secondary_event( nest::FlexibleDataEvent& ) override
   {
   }
 
@@ -216,7 +216,9 @@ private:
     Buffers_( const Buffers_&, ctc_loss& );
 
     size_t num_inputs_;  //! Number of neurons providing input
-    std::vector<nest::RingBuffer> p_symbol_;   //!< Buffers for incoming predictions, one per channel
+    //! Buffer for incoming predictions.
+    //! Outer dim: sending neuron, inner dim: time
+    std::vector<std::vector<double>> p_symbol_;
 
     //! Logger for all analog data
     nest::UniversalDataLogger< ctc_loss > logger_;

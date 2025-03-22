@@ -153,7 +153,7 @@ ctc::ctc_loss::ctc_loss( const ctc_loss& n )
 void
 ctc::ctc_loss::init_buffers_()
 {
-  B_.p_symbol_.clear();   // includes resize
+  B_.p_symbol_.clear();
   B_.logger_.reset();  // includes resize
 }
 
@@ -163,7 +163,7 @@ ctc::ctc_loss::pre_run_hook()
   B_.p_symbol_.resize( B_.num_inputs_ );
   for ( auto& ps : B_.p_symbol_ )
   {
-    ps.clear(); // includes resize
+    ps.resize( kernel().connection_manager.get_min_delay(), 0 );
   }
   
   B_.logger_.init();
@@ -185,21 +185,45 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
   for ( long lag = from_step; lag < to_step; ++lag )
   {
     // need to use B_.p_symbol_ here
-    
+    // print out dummy values for testing. This is stuff received from ctc_readout
+    std::cerr << std::fixed << std::setprecision(0);
+    std::cerr << "loss update loop: t = " << slice_origin.get_steps() << ", gid = " << get_node_id()
+      << ", p_symbol received = ";
+    for ( const auto& pa : B_.p_symbol_ )
+    {
+      for ( const auto& p : pa )
+      {
+        std::cerr << p << " ";
+      }
+      std::cerr << "| ";
+    }
+    std::cerr << std::endl;
+    // end dummy printing
+
     // filling loss buffer here with dummy values for testing
     for ( size_t i = 0 ; i < B_.num_inputs_ ; ++i )
     {
-      loss_buffer.at( i * min_delay + lag ) = i * 1000 + lag;
+      loss_buffer.at( i * min_delay + lag ) = (i+1) * 1e6 + slice_origin.get_steps() * 1e3 + lag;
     }
     
     // log membrane potential
     B_.logger_.record_data( slice_origin.get_steps() + lag );
   }
   
+  // print out dummy values for testing. This is stuff received from ctc_readout
+  std::cerr << "loss update end: t = " << slice_origin.get_steps()
+  <<  ",  loss sending = ";
+  for (const auto& v : loss_buffer )
+  {
+    std::cerr << v << " ";
+  }
+  std::cerr << std::endl;
+  // end dummy printing
+  
   // send loss back to readout neuron, blocked by neuron
-  GapJunctionEvent gap_junction_event;
-  gap_junction_event.set_coeffarray( loss_buffer );
-  kernel().event_delivery_manager.send_secondary( *this, gap_junction_event );
+  FlexibleDataEvent loss_event;
+  loss_event.set_coeffarray( loss_buffer );
+  kernel().event_delivery_manager.send_secondary( *this, loss_event );
 }
 
 void
@@ -213,7 +237,7 @@ ctc::ctc_loss::handle( InstantaneousRateConnectionEvent& e )
     const double prediction = e.get_coeffvalue( it_event ); // get_coeffvalue advances iterator
 
     assert( 0 < channel and channel <= B_.num_inputs_ );
-    B_.p_symbol_.at( channel - 1 ).add_value( i, prediction );
+    B_.p_symbol_.at( channel - 1 ).at( i ) = prediction;
   }
 }
 

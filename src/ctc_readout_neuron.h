@@ -49,15 +49,15 @@ Description
  Based on ``ctc_readout_neuron``.
 
  The key difference is that it sends a probability value to the CTC neuron and receives
- probability values back from the CTC node. We highjack GapJunctionEvent for this, since
+ probability values back from the CTC node. We use FlexibleDataEvent for this, since
  we need to distinguish three types of output: LearingSignal... back to recurrent network,
- DelayedRateEvent between neurons for normalization and GapJunctionEvent for exchange with
+ DelayedRateEvent between neurons for normalization and FlexibleDataEvent for exchange with
  CTC node.
  
  Rport assignment:
  - DelayedRateEvent as in original readout
  - InstantaneousRateConnectionEvent for readout -> ctc_loss connection, rport 1..n represents sender
- - GapJunction from 1..n, one rport for each incoming connection to CTC
+ - FlexibleDataEvent from 1..n, one rport for each incoming connection to CTC
    Connect with pass array of rport values, must match upgoing IRE rports (NEST cannot count up)
  
  CTC event format:
@@ -306,13 +306,13 @@ public:
   void handle( SpikeEvent& ) override;
   void handle( CurrentEvent& ) override;
   void handle( DelayedRateConnectionEvent& ) override;
-  void handle( GapJunctionEvent& ) override;
+  void handle( FlexibleDataEvent& ) override;
   void handle( DataLoggingRequest& ) override;
 
   size_t handles_test_event( SpikeEvent&, size_t ) override;
   size_t handles_test_event( CurrentEvent&, size_t ) override;
   size_t handles_test_event( DelayedRateConnectionEvent&, size_t ) override;
-  size_t handles_test_event( GapJunctionEvent&, size_t ) override;
+  size_t handles_test_event( FlexibleDataEvent&, size_t ) override;
   size_t handles_test_event( DataLoggingRequest&, size_t ) override;
 
   void get_status( DictionaryDatum& ) const override;
@@ -438,7 +438,7 @@ private:
     RingBuffer currents_;
 
     //! Buffer for incoming losses
-    RingBuffer ctc_loss_;
+    std::vector< double > ctc_loss_;
     
     //! Logger for universal data.
     UniversalDataLogger< ctc_readout_neuron > logger_;
@@ -589,11 +589,12 @@ ctc_readout_neuron::handles_test_event( DelayedRateConnectionEvent& e, size_t re
 }
 
 inline size_t
-ctc_readout_neuron::handles_test_event( GapJunctionEvent& e, size_t receptor_type )
+ctc_readout_neuron::handles_test_event( FlexibleDataEvent& e, size_t receptor_type )
 {
-  if ( receptor_type < 1 )
+  if ( receptor_type < 1 or receptor_type > kernel().simulation_manager.get_flexible_data_event_size() )
   {
-    throw IllegalConnection( "CTC loss / GapJunction connections require receptor_type > 0." );
+    throw IllegalConnection( "CTC loss / FlexibleData connections require "
+                            " 0 < receptor_type ≤ flex ev dat sz.");
   }
 
   return receptor_type;
