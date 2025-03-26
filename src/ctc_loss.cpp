@@ -75,11 +75,15 @@ RecordablesMap< ctc::ctc_loss >::create()
 
 ctc::ctc_loss::Parameters_::Parameters_()
   : w_stream(1)
-  , target()
+  , target("010203040")
+  , n_steps(10)
 {
 }
 
 ctc::ctc_loss::State_::State_( const Parameters_& p )
+: stream(p.target.size(), std::vector<double>(p.n_steps, 0.0))
+, state_vec(std::vector<double>(p.target.size(), 0.0))
+, sequence_point(0)
 {
 }
 
@@ -92,6 +96,7 @@ ctc::ctc_loss::Parameters_::get( DictionaryDatum& d ) const
 {
   def<double>(d,  "w_stream", w_stream );
   def<std::string>(d, "target", target);
+  //def<int>(d, "n_steps", n_steps);
 }
 
 void
@@ -99,12 +104,18 @@ ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d )
 {
   // add check that num input ch cannot be changed after making connections or simulating
   updateValue< double >( d, "w_stream", w_stream );
+  //updateValue< int >( d, "n_steps", n_steps);
   updateValue< std::string >(d, "target", target );
+  
+ 
 }
 
 void
 ctc::ctc_loss::State_::get( DictionaryDatum& d ) const
 {
+  // def< std::vector<std::vector<double>> >( d, "stream", stream );
+  // def< std::vector<double>>(d, "state_vec", state_vec);
+  //def<int>(d, "sequence_point", sequence_point);
 }
 
 void
@@ -165,6 +176,77 @@ ctc::ctc_loss::pre_run_hook()
   {
     ps.resize( kernel().connection_manager.get_min_delay(), 0 );
   }
+
+  int n_target;
+  n_target = P_.target.size();
+
+
+  if(P_.n_steps < n_target/2){
+    throw BadParameterValue("n_steps is to small for this target");
+  }
+    
+
+  // Initialize the alpha matrix
+  std::vector<std::vector<double>> alpha(n_target, std::vector<double>(P_.n_steps, 0.0));
+  alpha[0][0] = 0.5;
+  alpha[1][0] = 0.5;
+
+  // Compute alpha values
+  for (int j = 1; j < P_.n_steps; j++) {
+      for (int i = 0; i < n_target; i++) {
+          if (i == 0) {
+              alpha[i][j] = alpha[i][j - 1];
+          } else if (i == 1) {
+              alpha[i][j] = alpha[i][j - 1] + alpha[i - 1][j - 1];
+          } else if (P_.target[i] == P_.target[i - 2]) {
+              alpha[i][j] = alpha[i][j - 1] + alpha[i - 1][j - 1];
+          } else {
+              alpha[i][j] = alpha[i][j - 1] + alpha[i - 1][j - 1] + alpha[i - 2][j - 1];
+          }
+      }
+  }
+
+  // Initialize the beta matrix
+  std::vector<std::vector<double>> beta(n_target, std::vector<double>(P_.n_steps, 0.0));
+  beta[n_target - 1][P_.n_steps - 1] = 0.5;
+  beta[n_target - 2][P_.n_steps - 1] = 0.5;
+
+  // Compute beta values
+  for (int j = P_.n_steps - 2; j >= 0; j--) {
+      for (int i = n_target - 1; i >= 0; i--) {
+          if (i == n_target - 1) {
+              beta[i][j] = beta[i][j + 1];
+          } else if (i == n_target - 2) {
+              beta[i][j] = beta[i][j + 1] + beta[i + 1][j + 1];
+          } else if (P_.target[i] == P_.target[i + 2]) {
+              beta[i][j] = beta[i][j + 1] + beta[i + 1][j + 1];
+          } else {
+              beta[i][j] = beta[i][j + 1] + beta[i + 1][j + 1] + beta[i + 2][j + 1];
+          }
+      }
+  }
+
+  S_.stream.resize(n_target, std::vector<double>(P_.n_steps, 0.0));
+  // Compute the stream matrix by multiplying alpha and beta element-wise
+  for (int i = 0; i < n_target; i++) {
+      for (int j = 0; j < P_.n_steps; j++) {
+        S_.stream[i][j] = alpha[i][j] * beta[i][j];
+      }
+  }
+
+  // Normalize each column of the stream matrix
+  for (int j = 0; j < P_.n_steps; j++) {
+      double colSum = 0.0;
+      for (int i = 0; i < n_target; i++) {
+          colSum += S_.stream[i][j];
+      }
+      if (colSum > 0.0) { // Avoid division by zero
+          for (int i = 0; i < n_target; i++) {
+            S_.stream[i][j] /= colSum;
+          }
+      }
+  }
+
   
   B_.logger_.init();
 }

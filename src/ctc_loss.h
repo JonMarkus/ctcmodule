@@ -148,6 +148,7 @@ private:
   {
     double w_stream;   //!< weighting parameter for ctc stream
     std::string target;  //! ctc target without blank
+    int n_steps;    //! how many time steps to predict
     
     //! Initialize parameters to their default values.
     Parameters_();
@@ -179,6 +180,11 @@ private:
    */
   struct State_
   {
+    
+    std::vector<std::vector<double>> stream;    //! steering stream
+    std::vector<double> state_vec;  //! state vector of the most recent sequence point
+    int sequence_point;   //! current sequence point
+
     /**
      * Construct new default State_ instance based on values in Parameters_.
      * This c'tor is called by the no-argument c'tor of the neuron model. It
