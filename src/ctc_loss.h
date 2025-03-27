@@ -147,8 +147,9 @@ private:
   struct Parameters_
   {
     double w_stream;   //!< weighting parameter for ctc stream
-    std::string target;  //! ctc target without blank
-    int n_steps;    //! how many time steps to predict
+    std::vector<long> target;  //! ctc target without blank
+    long n_steps;    //! how many time steps to predict
+    long n_target;   //! length of target
     
     //! Initialize parameters to their default values.
     Parameters_();
@@ -182,7 +183,7 @@ private:
   {
     
     std::vector<std::vector<double>> stream;    //! steering stream
-    std::vector<double> state_vec;  //! state vector of the most recent sequence point
+    std::vector<double> last_state;  //! state vector of the most recent sequence point
     int sequence_point;   //! current sequence point
 
     /**

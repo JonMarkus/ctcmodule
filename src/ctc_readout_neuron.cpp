@@ -269,6 +269,8 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
     S_.v_m_ = V_.P_i_in_ * S_.i_in_ + V_.P_z_in_ * S_.z_in_ + V_.P_v_m_ * S_.v_m_;
     S_.v_m_ = std::max( S_.v_m_, P_.V_min_ );
 
+    // S_.target_signal_ = B_.ctc_loss_[ lag ];
+
     // error signal calculation should somehow use B_.ctc_loss_.
     ( this->*compute_error_signal )( lag );
 
@@ -282,14 +284,14 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
     B_.normalization_rate_ = 0.0;
 
     // print out dummy values for testing. This is stuff received from ctc_readout
-    std::cerr << std::fixed << std::setprecision(0);
-    std::cerr << "readout update loop: t = " << origin.get_steps() << ", gid = " << get_node_id()
-      << ", loss received = ";
-    for ( const auto&l : B_.ctc_loss_ )
-    {
-      std::cerr << l << " ";
-    }
-    std::cerr << std::endl;
+    // std::cerr << std::fixed << std::setprecision(0);
+    // std::cerr << "readout update loop: t = " << origin.get_steps() << ", gid = " << get_node_id()
+    //   << ", loss received = ";
+    // for ( const auto&l : B_.ctc_loss_ )
+    // {
+    //   std::cerr << l << " ";
+    // }
+    // std::cerr << std::endl;
     // end dummy printing
     
     if ( V_.signal_to_other_readouts_ )
@@ -330,13 +332,13 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
   kernel().event_delivery_manager.send_secondary( *this, p_symbol_event );
 
   // print out dummy values for testing. This is stuff received from ctc_readout
-  std::cerr << "readout update end: t =  " << origin.get_steps() << ", gid = " << get_node_id()
-    << ", p_symbol sending = ";
-  for ( const auto&p : p_symbol_buffer )
-  {
-    std::cerr << p << " ";
-  }
-  std::cerr << std::endl;
+  // std::cerr << "readout update end: t =  " << origin.get_steps() << ", gid = " << get_node_id()
+  //   << ", p_symbol sending = ";
+  // for ( const auto&p : p_symbol_buffer )
+  // {
+  //   std::cerr << p << " ";
+  // }
+  // std::cerr << std::endl;
   // end dummy printing
 
   return;
