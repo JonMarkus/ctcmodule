@@ -76,7 +76,7 @@ RecordablesMap< ctc::ctc_loss >::create()
 ctc::ctc_loss::Parameters_::Parameters_()
   : w_stream(1)
   , target({0, 1, 0, 2, 0})
-  , n_steps(10)
+  , n_steps(5000)
   , n_target(target.size())
 {
 }
@@ -101,7 +101,7 @@ ctc::ctc_loss::Parameters_::get( DictionaryDatum& d ) const
 }
 
 void
-ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d )
+ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d , Node* node)
 {
   // add check that num input ch cannot be changed after making connections or simulating
   updateValue< double >( d, "w_stream", w_stream );
@@ -115,7 +115,7 @@ void
 ctc::ctc_loss::State_::get( DictionaryDatum& d ) const
 {
   // def< std::vector<std::vector<double>> >( d, "stream", stream );
-  // def< std::vector<double>>(d, "state_vec", state_vec);
+  // def< std::vector<double>>(d, "last_state", last_state);
   // def<long>(d, "sequence_point", sequence_point);
 }
 
@@ -184,7 +184,6 @@ ctc::ctc_loss::pre_run_hook()
   if(P_.n_steps < P_.n_target/2){
     throw BadParameterValue("n_steps is to small for this target");
   }
-    
 
   // Initialize the alpha matrix
   std::vector<std::vector<double>> alpha(P_.n_target, std::vector<double>(P_.n_steps, 0.0));
@@ -226,7 +225,10 @@ ctc::ctc_loss::pre_run_hook()
       }
   }
 
+  S_.stream.clear();
   S_.stream.resize(P_.n_target, std::vector<double>(P_.n_steps, 0.0));
+  
+
   // Compute the stream matrix by multiplying alpha and beta element-wise
   for (int i = 0; i < P_.n_target; i++) {
       for (int j = 0; j < P_.n_steps; j++) {
@@ -247,7 +249,7 @@ ctc::ctc_loss::pre_run_hook()
       }
   }
 
-  
+
   B_.logger_.init();
 }
 
@@ -268,11 +270,21 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
 
   for ( long lag = from_step; lag < to_step; ++lag )
   {
-  std::vector<double> prediction;
-  for ( const auto& pa : B_.p_symbol_ )
-  {
-      prediction.push_back(pa[lag]);
-  }
+    std::vector<double> prediction;
+    for ( const auto& pa : B_.p_symbol_ )
+    {
+        prediction.push_back(pa[lag]);
+    }
+
+    // no prdiction can be less than zero
+    for (auto& p : prediction) 
+    {
+        if (p < 0) 
+        {
+            p = 0;
+        }
+    }
+
     // Normalize prediction to probabilities
     double sum_pred = std::accumulate(prediction.begin(), prediction.end(), 0.0);
     if (sum_pred != 0) 
@@ -345,11 +357,10 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
         f /= sum_forward;
     }
     
-    
+
     // Update S_.last_state
     S_.last_state = forward_state;
-   
-    
+
     // Compute ctc_state
     std::vector<double> ctc_state(P_.n_target, 0.0);
     for (int i = 0; i < P_.n_target; ++i) 
@@ -360,18 +371,20 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
 
     // Normalize ctc_state
     double sum_ctc = std::accumulate(ctc_state.begin(), ctc_state.end(), 0.0);
-    if (sum_ctc != 0) 
+
+    if (sum_ctc == 0)
     {
+      // warning("CTC sum is zero");
+      std::cerr << "CTC sum is " << sum_ctc << std::endl;
+  }
+    else
+    {
+
         for (auto& c : ctc_state) 
         {
             c /= sum_ctc;
         }
-    }
-    else
-    {
-        // warning("CTC sum is zero");
-        std::cerr << "CTC sum is zero" << std::endl;
-    }
+    } 
 
     // Update step target
     for (int i = 0; i < P_.n_target; ++i) 

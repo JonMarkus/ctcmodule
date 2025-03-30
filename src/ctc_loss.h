@@ -111,7 +111,7 @@ public:
   }
 
   void get_status( DictionaryDatum& ) const override;
-  void set_status( const DictionaryDatum& ) override;
+  void set_status( const DictionaryDatum&) override;
 
 private:
   //! Reset internal buffers of neuron.
@@ -158,7 +158,7 @@ private:
     void get( DictionaryDatum& ) const;
 
     //! Set parameter values from dictionary.
-    void set( const DictionaryDatum& );
+    void set( const DictionaryDatum&, Node* );
   };
 
   /**
@@ -326,7 +326,7 @@ inline void
 ctc_loss::set_status( const DictionaryDatum& d )
 {
   Parameters_ ptmp = P_; // temporary copy in case of errors
-  ptmp.set( d );         // throws if BadProperty
+  ptmp.set( d, this );         // throws if BadProperty
   State_ stmp = S_;      // temporary copy in case of errors
   stmp.set( d, ptmp );   // throws if BadProperty
 
