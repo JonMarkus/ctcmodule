@@ -150,6 +150,7 @@ private:
     std::vector<long> target;  //! ctc target without blank
     long n_steps;    //! how many time steps to predict
     long n_target;   //! length of target
+    long loss_delay; //! delay of the loss signal
     
     //! Initialize parameters to their default values.
     Parameters_();
@@ -158,7 +159,7 @@ private:
     void get( DictionaryDatum& ) const;
 
     //! Set parameter values from dictionary.
-    void set( const DictionaryDatum&, Node* );
+    void set( const DictionaryDatum&);
   };
 
   /**
@@ -326,7 +327,7 @@ inline void
 ctc_loss::set_status( const DictionaryDatum& d )
 {
   Parameters_ ptmp = P_; // temporary copy in case of errors
-  ptmp.set( d, this );         // throws if BadProperty
+  ptmp.set( d);         // throws if BadProperty
   State_ stmp = S_;      // temporary copy in case of errors
   stmp.set( d, ptmp );   // throws if BadProperty
 

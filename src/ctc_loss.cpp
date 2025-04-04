@@ -78,6 +78,7 @@ ctc::ctc_loss::Parameters_::Parameters_()
   , target({0, 1, 0, 2, 0})
   , n_steps(5000)
   , n_target(target.size())
+  , loss_delay(3)
 {
 }
 
@@ -101,7 +102,7 @@ ctc::ctc_loss::Parameters_::get( DictionaryDatum& d ) const
 }
 
 void
-ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d , Node* node)
+ctc::ctc_loss::Parameters_::set( const DictionaryDatum& d)
 {
   // add check that num input ch cannot be changed after making connections or simulating
   updateValue< double >( d, "w_stream", w_stream );
@@ -172,6 +173,8 @@ ctc::ctc_loss::init_buffers_()
 void
 ctc::ctc_loss::pre_run_hook()
 {
+  S_.sequence_point = 0;
+
   B_.p_symbol_.resize( B_.num_inputs_ );
   for ( auto& ps : B_.p_symbol_ )
   {
@@ -232,7 +235,7 @@ ctc::ctc_loss::pre_run_hook()
   // Compute the stream matrix by multiplying alpha and beta element-wise
   for (int i = 0; i < P_.n_target; i++) {
       for (int j = 0; j < P_.n_steps; j++) {
-        S_.stream[i][j] = alpha[i][j] * beta[i][j];
+        S_.stream.at(i).at(j) = alpha[i][j] * beta[i][j];
       }
   }
 
@@ -244,7 +247,7 @@ ctc::ctc_loss::pre_run_hook()
       }
       if (colSum > 0.0) { // Avoid division by zero
           for (int i = 0; i < P_.n_target; i++) {
-            S_.stream[i][j] /= colSum;
+            S_.stream.at(i).at(j) /= colSum;
           }
       }
   }
@@ -267,9 +270,20 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
   const size_t min_delay = kernel().connection_manager.get_min_delay();
   std::vector< double > loss_buffer( B_.num_inputs_ * min_delay, 0 );
 
+  const long update_interval = kernel().simulation_manager.get_eprop_update_interval().get_steps();
+  const long learning_window = kernel().simulation_manager.get_eprop_learning_window().get_steps();
+
 
   for ( long lag = from_step; lag < to_step; ++lag )
   {
+    const long t = slice_origin.get_steps() + lag;
+    const long interval_step_signals = ( t - P_.loss_delay ) % update_interval;
+
+    if( interval_step_signals  == update_interval - learning_window )
+    {
+    
+    
+
     std::vector<double> prediction;
     for ( const auto& pa : B_.p_symbol_ )
     {
@@ -302,6 +316,7 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
       {
           p = 1.0 / prediction.size();
       }
+      sum_pred = 1.0;
     }
 
 
@@ -358,14 +373,11 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
     }
     
 
-    // Update S_.last_state
-    S_.last_state = forward_state;
-
     // Compute ctc_state
     std::vector<double> ctc_state(P_.n_target, 0.0);
     for (int i = 0; i < P_.n_target; ++i) 
     {
-      ctc_state[i] = forward_state[i] * pow(S_.stream[i][S_.sequence_point], P_.w_stream);
+      ctc_state[i] = forward_state[i] * pow(S_.stream.at(i).at(S_.sequence_point), P_.w_stream);
     }
  
 
@@ -376,6 +388,10 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
     {
       // warning("CTC sum is zero");
       std::cerr << "CTC sum is " << sum_ctc << std::endl;
+      for(int i = 0; i < P_.n_target; ++i )
+      {
+        ctc_state[i] = S_.stream[i][S_.sequence_point];
+      }
   }
     else
     {
@@ -386,6 +402,10 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
         }
     } 
 
+    
+    // Update S_.last_state
+    S_.last_state = forward_state;
+
     // Update step target
     for (int i = 0; i < P_.n_target; ++i) 
     {
@@ -395,12 +415,13 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
      // filling loss buffer here with dummy values for testing
      for ( size_t i = 0 ; i < B_.num_inputs_ ; ++i )
      {
-       loss_buffer.at( i * min_delay + lag ) = step_target.at( i );
+       loss_buffer.at( i * min_delay + lag ) = (prediction.at( i ) - step_target.at( i )) * sum_pred;
      }
 
     S_.sequence_point ++;
 
     B_.logger_.record_data( slice_origin.get_steps() + lag );
+    }
   }
   
 

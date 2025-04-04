@@ -269,16 +269,39 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
     S_.v_m_ = V_.P_i_in_ * S_.i_in_ + V_.P_z_in_ * S_.z_in_ + V_.P_v_m_ * S_.v_m_;
     S_.v_m_ = std::max( S_.v_m_, P_.V_min_ );
 
-    // S_.target_signal_ = B_.ctc_loss_[ lag ];
+    // S_.error_signal_ = B_.ctc_loss_[ lag ];
 
     // error signal calculation should somehow use B_.ctc_loss_.
-    ( this->*compute_error_signal )( lag );
+    // ( this->*compute_error_signal )( lag );
+    // const double norm_rate = B_.normalization_rate_ + S_.readout_signal_unnorm_;
+    S_.readout_signal_ = S_.readout_signal_unnorm_ ;
+    S_.readout_signal_unnorm_ = std::exp( S_.v_m_ + P_.E_L_ );
 
-    if ( interval_step_signals < update_interval - learning_window )
+    // write dummy value for testing, build in lag so we can see lags arrive correctly
+    // p_symbol_buffer[ lag ] = S_.readout_signal_;
+
+    if(interval_step + 1 == update_interval - learning_window)
+    {
+      // send signal to loss 
+     p_symbol_buffer[ lag ] = S_.readout_signal_;
+     
+     S_.error_signal_ = 0.0;
+
+
+    }
+
+    else if ( interval_step_signals < update_interval - learning_window )
     {
       S_.target_signal_ = 0.0;
       S_.readout_signal_ = 0.0;
       S_.error_signal_ = 0.0;
+    }
+    else
+    {
+      
+      S_.readout_signal_ = 0.0;
+      S_.error_signal_ = B_.ctc_loss_[ lag ];
+
     }
 
     B_.normalization_rate_ = 0.0;
@@ -301,8 +324,7 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
 
     error_signal_buffer[ lag ] = S_.error_signal_;
     
-    // write dummy value for testing, build in lag so we can see lags arrive correctly
-    p_symbol_buffer[ lag ] = get_node_id() * 1e6 + origin.get_steps() * 1e3 + lag;
+
 
     append_new_eprop_history_entry( t );
     write_error_signal_to_history( t, S_.error_signal_ );
