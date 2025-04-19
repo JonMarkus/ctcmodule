@@ -274,8 +274,9 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
     // error signal calculation should somehow use B_.ctc_loss_.
     // ( this->*compute_error_signal )( lag );
     // const double norm_rate = B_.normalization_rate_ + S_.readout_signal_unnorm_;
-    S_.readout_signal_ = S_.readout_signal_unnorm_ ;
+    // S_.readout_signal_unnorm_ = S_.v_m_ + P_.E_L_;
     S_.readout_signal_unnorm_ = std::exp( S_.v_m_ + P_.E_L_ );
+    S_.readout_signal_ = S_.readout_signal_unnorm_ ;
 
     // write dummy value for testing, build in lag so we can see lags arrive correctly
     // p_symbol_buffer[ lag ] = S_.readout_signal_;

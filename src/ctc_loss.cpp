@@ -97,8 +97,8 @@ void
 ctc::ctc_loss::Parameters_::get( DictionaryDatum& d ) const
 {
   def<double>(d,  "w_stream", w_stream );
-  // def<std::vector<int>>(d, "target", target);
-  // def<int>(d, "n_steps", n_steps);
+  def<std::vector<long>>(d, "target", target);
+  def<long>(d, "n_steps", n_steps);
 }
 
 void
@@ -174,6 +174,7 @@ void
 ctc::ctc_loss::pre_run_hook()
 {
   S_.sequence_point = 0;
+  P_.n_target = P_.target.size();
 
   B_.p_symbol_.resize( B_.num_inputs_ );
   for ( auto& ps : B_.p_symbol_ )
@@ -299,7 +300,7 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
         }
     }
 
-    // Normalize prediction to probabilities
+    // make prediction to probabilities
     double sum_pred = std::accumulate(prediction.begin(), prediction.end(), 0.0);
     if (sum_pred != 0) 
     {
