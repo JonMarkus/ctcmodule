@@ -372,6 +372,9 @@ private:
     //! Absolute lower bound of the membrane voltage relative to the leak membrane potential (mV).
     double V_min_;
 
+    //! If True, the neuron sends out error signal. If False, error signal will always be equal to zero
+    bool training_mode;
+
     //! Default constructor.
     Parameters_();
 

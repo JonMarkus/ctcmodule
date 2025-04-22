@@ -78,6 +78,7 @@ ctc::ctc_readout_neuron::Parameters_::Parameters_()
   , regular_spike_arrival_( true )
   , tau_m_( 10.0 )
   , V_min_( -std::numeric_limits< double >::max() )
+  , training_mode(1)
 {
 }
 
@@ -117,6 +118,7 @@ ctc::ctc_readout_neuron::Parameters_::get( DictionaryDatum& d ) const
   def< bool >( d, names::regular_spike_arrival, regular_spike_arrival_ );
   def< double >( d, names::tau_m, tau_m_ );
   def< double >( d, names::V_min, V_min_ + E_L_ );
+  def< bool >( d, "training_mode", training_mode );
 }
 
 double
@@ -134,6 +136,7 @@ ctc::ctc_readout_neuron::Parameters_::set( const DictionaryDatum& d, Node* node 
   updateValueParam< std::string >( d, names::loss, loss_, node );
   updateValueParam< bool >( d, names::regular_spike_arrival, regular_spike_arrival_, node );
   updateValueParam< double >( d, names::tau_m, tau_m_, node );
+  updateValueParam< bool >( d, "training_mode", training_mode, node );
 
   if ( C_m_ <= 0 )
   {
@@ -301,8 +304,14 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
     {
       
       S_.readout_signal_ = 0.0;
-      S_.error_signal_ = B_.ctc_loss_[ lag ];
-
+      if(P_.training_mode)
+      {
+        S_.error_signal_ = B_.ctc_loss_[ lag ];
+      }
+      else
+      {
+        S_.error_signal_ = 0.0;
+      }
     }
 
     B_.normalization_rate_ = 0.0;
