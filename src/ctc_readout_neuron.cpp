@@ -78,6 +78,7 @@ ctc::ctc_readout_neuron::Parameters_::Parameters_()
   , regular_spike_arrival_( true )
   , tau_m_( 10.0 )
   , V_min_( -std::numeric_limits< double >::max() )
+  , training_mode(1)
 {
 }
 
@@ -117,6 +118,7 @@ ctc::ctc_readout_neuron::Parameters_::get( DictionaryDatum& d ) const
   def< bool >( d, names::regular_spike_arrival, regular_spike_arrival_ );
   def< double >( d, names::tau_m, tau_m_ );
   def< double >( d, names::V_min, V_min_ + E_L_ );
+  def< bool >( d, "training_mode", training_mode );
 }
 
 double
@@ -134,6 +136,7 @@ ctc::ctc_readout_neuron::Parameters_::set( const DictionaryDatum& d, Node* node 
   updateValueParam< std::string >( d, names::loss, loss_, node );
   updateValueParam< bool >( d, names::regular_spike_arrival, regular_spike_arrival_, node );
   updateValueParam< double >( d, names::tau_m, tau_m_, node );
+  updateValueParam< bool >( d, "training_mode", training_mode, node );
 
   if ( C_m_ <= 0 )
   {
@@ -269,29 +272,48 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
     S_.v_m_ = V_.P_i_in_ * S_.i_in_ + V_.P_z_in_ * S_.z_in_ + V_.P_v_m_ * S_.v_m_;
     S_.v_m_ = std::max( S_.v_m_, P_.V_min_ );
 
-    // error signal calculation should somehow use B_.ctc_loss_.
-    ( this->*compute_error_signal )( lag );
+  
+    S_.readout_signal_unnorm_ = std::exp( S_.v_m_ + P_.E_L_ );
+    S_.readout_signal_ = S_.readout_signal_unnorm_ ;
 
-    if ( interval_step_signals < update_interval - learning_window )
+
+    // only send readout signal when it is suposed to 
+    if(interval_step + 1 == update_interval - learning_window)
+    {
+      // send signal to loss 
+     p_symbol_buffer[ lag ] = S_.readout_signal_;
+     
+     S_.error_signal_ = 0.0;
+
+
+    }
+
+
+    else if ( interval_step_signals < update_interval - learning_window )
     {
       S_.target_signal_ = 0.0;
       S_.readout_signal_ = 0.0;
       S_.error_signal_ = 0.0;
     }
 
+    // only send error signal when it is suposed to 
+    else
+    {
+      
+      S_.readout_signal_ = 0.0;
+      if(P_.training_mode)
+      {
+        S_.error_signal_ = B_.ctc_loss_[ lag ];
+      }
+      else
+      {
+        S_.error_signal_ = 0.0;
+      }
+    }
+
     B_.normalization_rate_ = 0.0;
 
-    // print out dummy values for testing. This is stuff received from ctc_readout
-    std::cerr << std::fixed << std::setprecision(0);
-    std::cerr << "readout update loop: t = " << origin.get_steps() << ", gid = " << get_node_id()
-      << ", loss received = ";
-    for ( const auto&l : B_.ctc_loss_ )
-    {
-      std::cerr << l << " ";
-    }
-    std::cerr << std::endl;
-    // end dummy printing
-    
+
     if ( V_.signal_to_other_readouts_ )
     {
       readout_signal_unnorm_buffer[ lag ] = S_.readout_signal_unnorm_;
@@ -299,8 +321,7 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
 
     error_signal_buffer[ lag ] = S_.error_signal_;
     
-    // write dummy value for testing, build in lag so we can see lags arrive correctly
-    p_symbol_buffer[ lag ] = get_node_id() * 1e6 + origin.get_steps() * 1e3 + lag;
+
 
     append_new_eprop_history_entry( t );
     write_error_signal_to_history( t, S_.error_signal_ );
@@ -329,15 +350,6 @@ ctc::ctc_readout_neuron::update( Time const& origin, const long from, const long
   p_symbol_event.set_coeffarray( p_symbol_buffer );
   kernel().event_delivery_manager.send_secondary( *this, p_symbol_event );
 
-  // print out dummy values for testing. This is stuff received from ctc_readout
-  std::cerr << "readout update end: t =  " << origin.get_steps() << ", gid = " << get_node_id()
-    << ", p_symbol sending = ";
-  for ( const auto&p : p_symbol_buffer )
-  {
-    std::cerr << p << " ";
-  }
-  std::cerr << std::endl;
-  // end dummy printing
 
   return;
 }

@@ -111,7 +111,7 @@ public:
   }
 
   void get_status( DictionaryDatum& ) const override;
-  void set_status( const DictionaryDatum& ) override;
+  void set_status( const DictionaryDatum&) override;
 
 private:
   //! Reset internal buffers of neuron.
@@ -147,7 +147,10 @@ private:
   struct Parameters_
   {
     double w_stream;   //!< weighting parameter for ctc stream
-    std::string target;  //! ctc target without blank
+    std::vector<long> target;  //! ctc target without blank
+    long n_steps;    //! how many time steps to predict
+    long n_target;   //! length of target
+    long loss_delay; //! delay of the loss signal
     
     //! Initialize parameters to their default values.
     Parameters_();
@@ -156,7 +159,7 @@ private:
     void get( DictionaryDatum& ) const;
 
     //! Set parameter values from dictionary.
-    void set( const DictionaryDatum& );
+    void set( const DictionaryDatum&);
   };
 
   /**
@@ -179,6 +182,11 @@ private:
    */
   struct State_
   {
+    
+    std::vector<std::vector<double>> stream;    //! steering stream
+    std::vector<double> last_state;  //! state vector of the most recent sequence point
+    int sequence_point;   //! current sequence point
+
     /**
      * Construct new default State_ instance based on values in Parameters_.
      * This c'tor is called by the no-argument c'tor of the neuron model. It
@@ -319,7 +327,7 @@ inline void
 ctc_loss::set_status( const DictionaryDatum& d )
 {
   Parameters_ ptmp = P_; // temporary copy in case of errors
-  ptmp.set( d );         // throws if BadProperty
+  ptmp.set( d);         // throws if BadProperty
   State_ stmp = S_;      // temporary copy in case of errors
   stmp.set( d, ptmp );   // throws if BadProperty
 
