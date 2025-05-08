@@ -428,43 +428,6 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
   }
   
 
-  // for ( long lag = from_step; lag < to_step; ++lag )
-  // {
-    // need to use B_.p_symbol_ here
-    // print out dummy values for testing. This is stuff received from ctc_readout
-    // std::cerr << std::fixed << std::setprecision(4);
-    // std::cerr << "loss update loop: t = " << slice_origin.get_steps() << ", gid = " << get_node_id()
-    //   << ", p_symbol received = ";
-    // for ( const auto& pa : B_.p_symbol_ )
-    // {
-    //   for ( const auto& p : pa )
-    //   {
-    //     std::cerr << p << " ";
-    //   }
-    //   std::cerr << "| ";
-    // }
-    // std::cerr << std::endl;
-    // end dummy printing
-
-    // filling loss buffer here with dummy values for testing
-    // for ( size_t i = 0 ; i < B_.num_inputs_ ; ++i )
-    // {
-    //   loss_buffer.at( i * min_delay + lag ) = (i+1) * 1e6 + slice_origin.get_steps() * 1e3 + lag;
-    // }
-    
-    // log membrane potential
-    // B_.logger_.record_data( slice_origin.get_steps() + lag );
-  // }
-  
-  // print out dummy values for testing. This is stuff received from ctc_readout
-  // std::cerr << "loss update end: t = " << slice_origin.get_steps()
-  // <<  ",  loss sending = ";
-  // for (const auto& v : loss_buffer )
-  // {
-  //   std::cerr << v << " ";
-  // }
-  // std::cerr << std::endl;
-  // end dummy printing
   
   // send loss back to readout neuron, blocked by neuron
   FlexibleDataEvent loss_event;
