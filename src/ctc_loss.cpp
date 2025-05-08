@@ -413,8 +413,10 @@ ctc::ctc_loss::update( Time const& slice_origin, const long from_step, const lon
         step_target[P_.target[i]] += ctc_state[i];
     }
     
+    loss_buffer.at(0 + lag) = 0;
+
      // filling loss buffer here with dummy values for testing
-     for ( size_t i = 0 ; i < B_.num_inputs_ ; ++i )
+     for ( size_t i = 1 ; i < B_.num_inputs_ ; ++i )
      {
        loss_buffer.at( i * min_delay + lag ) = (prediction.at( i ) - step_target.at( i )) * sum_pred;
      }
